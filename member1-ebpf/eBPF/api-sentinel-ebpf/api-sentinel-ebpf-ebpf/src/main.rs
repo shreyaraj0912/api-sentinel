@@ -3,6 +3,7 @@
 
 use aya_ebpf::{
     bindings::xdp_action,
+    helpers::bpf_ktime_get_ns,
     macros::{map, xdp},
     maps::RingBuf,
     programs::XdpContext,
@@ -108,29 +109,28 @@ fn try_api_sentinel_ebpf(ctx: XdpContext) -> Result<u32, u32> {
     // TCP/UDP header starts after IPv4 header.
     let transport_offset = 14 + ip_header_len;
 
-    let mut src_port: u16 = 0;
-    let mut dst_port: u16 = 0;
+    let (src_port, dst_port) = if protocol == IPPROTO_TCP || protocol == IPPROTO_UDP {
+    let src_port_ptr = unsafe {
+        ptr_at::<u16>(&ctx, transport_offset)?
+    };
 
-    if protocol == IPPROTO_TCP || protocol == IPPROTO_UDP {
-        let src_port_ptr = unsafe {
-            ptr_at::<u16>(&ctx, transport_offset)?
-        };
+    let dst_port_ptr = unsafe {
+        ptr_at::<u16>(&ctx, transport_offset + 2)?
+    };
 
-        let dst_port_ptr = unsafe {
-            ptr_at::<u16>(&ctx, transport_offset + 2)?
-        };
+    (
+        unsafe { u16::from_be(*src_port_ptr) },
+        unsafe { u16::from_be(*dst_port_ptr) },
+    )
+} else {
+    return Ok(xdp_action::XDP_PASS);
+};
 
-        src_port = unsafe { u16::from_be(*src_port_ptr) };
-        dst_port = unsafe { u16::from_be(*dst_port_ptr) };
-    } else {
-        // Ignore other protocols for now.
-        return Ok(xdp_action::XDP_PASS);
-    }
 
     // Reserve an event in the RingBuf.
     if let Some(mut entry) = EVENTS.reserve::<FlowEvent>(0) {
         entry.write(FlowEvent {
-            timestamp: 0,
+            timestamp: unsafe { bpf_ktime_get_ns() },
             src_ip,
             dst_ip,
             src_port,
