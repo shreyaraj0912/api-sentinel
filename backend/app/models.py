@@ -1,0 +1,82 @@
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
+
+from .database import Base
+
+
+class Event(Base):
+    """
+    Stores telemetry events received from the eBPF collector.
+    """
+
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    timestamp = Column(Float, nullable=False)
+
+    src_ip = Column(String, nullable=True)
+    dst_ip = Column(String, nullable=True)
+
+    src_port = Column(Integer, nullable=True)
+    dst_port = Column(Integer, nullable=True)
+
+    protocol = Column(String, nullable=True)
+    packet_len = Column(Integer, nullable=True)
+
+
+class Inventory(Base):
+    """
+    Stores observed network services / APIs.
+
+    For the current packet-level telemetry, an inventory item
+    is identified primarily by:
+
+        destination IP
+        destination port
+        protocol
+
+    HTTP path and method can be added later when the telemetry
+    collector provides HTTP-level information.
+    """
+
+    __tablename__ = "inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Future HTTP/API information.
+    path = Column(String, nullable=True)
+    method = Column(String, nullable=True)
+
+    # Current packet-level information.
+    dst_ip = Column(String, nullable=True)
+    dst_port = Column(Integer, nullable=True)
+    protocol = Column(String, nullable=True)
+
+    # Observation timestamps.
+    first_seen = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    last_seen = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    # Number of observed events for this inventory item.
+    request_count = Column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # Whether the API/service is known/documented.
+    documented = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
