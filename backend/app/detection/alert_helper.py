@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,8 @@ def create_alert(
     """
     Create and persist a security alert.
 
-    All detection modules should use this helper so that
-    alerts have a consistent structure.
+    All detection modules use this helper so alerts
+    have a consistent structure.
     """
 
     alert = Alert(
@@ -27,7 +27,7 @@ def create_alert(
         severity=severity,
         src_ip=src_ip,
         destination=destination,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         description=description,
         evidence=json.dumps(evidence) if evidence else None,
         status="OPEN",

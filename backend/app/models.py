@@ -1,8 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
 
 from .database import Base
+
+
+def utc_now():
+    """Return the current UTC time."""
+    return datetime.now(timezone.utc)
 
 
 class Event(Base):
@@ -29,16 +34,6 @@ class Event(Base):
 class Inventory(Base):
     """
     Stores observed network services / APIs.
-
-    For the current packet-level telemetry, an inventory item
-    is identified primarily by:
-
-        destination IP
-        destination port
-        protocol
-
-    HTTP path and method can be added later when the telemetry
-    collector provides HTTP-level information.
     """
 
     __tablename__ = "inventory"
@@ -57,29 +52,28 @@ class Inventory(Base):
     # Observation timestamps.
     first_seen = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )
 
     last_seen = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )
 
-    # Number of observed events for this inventory item.
     request_count = Column(
         Integer,
         default=0,
         nullable=False,
     )
 
-    # Whether the API/service is known/documented.
     documented = Column(
         Boolean,
         default=False,
         nullable=False,
     )
+
 
 class Alert(Base):
     """
@@ -99,7 +93,7 @@ class Alert(Base):
 
     timestamp = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -57,7 +57,7 @@ def create_event(
         .first()
     )
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # ---------------------------------------------------------
     # 3. Create inventory item if this service is new
