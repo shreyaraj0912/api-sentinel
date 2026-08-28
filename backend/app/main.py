@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 
 from .database import Base, engine
+from .routes.alerts import router as alerts_router
 from .routes.events import router as events_router
 from .routes.inventory import router as inventory_router
-
 
 # Create database tables if they do not already exist.
 Base.metadata.create_all(bind=engine)
@@ -45,3 +45,4 @@ def health():
 # Register API routers.
 app.include_router(events_router)
 app.include_router(inventory_router)
+app.include_router(alerts_router)

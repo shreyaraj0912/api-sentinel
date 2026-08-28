@@ -58,3 +58,26 @@ class InventoryResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+class AlertResponse(BaseModel):
+    """
+    Security alert returned by the API.
+    """
+
+    id: int
+
+    alert_type: str
+    severity: str
+
+    src_ip: str | None = None
+    destination: str | None = None
+
+    timestamp: datetime
+
+    description: str
+    evidence: str | None = None
+
+    status: str
+
+    model_config = {
+        "from_attributes": True
+    }
