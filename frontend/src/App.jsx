@@ -1,104 +1,89 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const API_BASE = "http://127.0.0.1:8000";
 
 function App() {
+  const [events, setEvents] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+
   const [alertFilter, setAlertFilter] = useState("ALL");
   const [search, setSearch] = useState("");
 
-  const events = [
-    {
-      src_ip: "192.168.1.10",
-      dst_ip: "10.0.0.5",
-      protocol: "TCP",
-      src_port: 54321,
-      dst_port: 443,
-      packet_len: 512,
-    },
-    {
-      src_ip: "192.168.1.11",
-      dst_ip: "10.0.0.5",
-      protocol: "UDP",
-      src_port: 53000,
-      dst_port: 53,
-      packet_len: 128,
-    },
-    {
-      src_ip: "192.168.1.12",
-      dst_ip: "10.0.0.8",
-      protocol: "TCP",
-      src_port: 49152,
-      dst_port: 8000,
-      packet_len: 1024,
-    },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const inventory = [
-    {
-      endpoint: "/api/v1/products/{id}",
-      method: "GET",
-      status: "DOCUMENTED",
-    },
-    {
-      endpoint: "/api/v1/orders/{id}",
-      method: "GET",
-      status: "DOCUMENTED",
-    },
-    {
-      endpoint: "/api/v1/internal/debug",
-      method: "GET",
-      status: "SHADOW API",
-    },
-    {
-      endpoint: "/api/v1/users/{id}",
-      method: "GET",
-      status: "DOCUMENTED",
-    },
-  ];
+  async function fetchData() {
+    try {
+      setError("");
 
-  const alerts = [
-    {
-      type: "BOLA",
-      endpoint: "/api/v1/orders/1002",
-      severity: "CRITICAL",
-      status: "BLOCKED",
-    },
-    {
-      type: "BFLA",
-      endpoint: "/api/v1/users/101",
-      severity: "HIGH",
-      status: "BLOCKED",
-    },
-    {
-      type: "Shadow API",
-      endpoint: "/api/v1/internal/debug",
-      severity: "MEDIUM",
-      status: "DETECTED",
-    },
-  ];
+      const [eventsRes, inventoryRes, alertsRes] = await Promise.all([
+        fetch(`${API_BASE}/events`),
+        fetch(`${API_BASE}/inventory`),
+        fetch(`${API_BASE}/alerts`),
+      ]);
+
+      if (!eventsRes.ok || !inventoryRes.ok || !alertsRes.ok) {
+        throw new Error("Unable to fetch data from backend");
+      }
+
+      const [eventsData, inventoryData, alertsData] =
+        await Promise.all([
+          eventsRes.json(),
+          inventoryRes.json(),
+          alertsRes.json(),
+        ]);
+
+      setEvents(eventsData);
+      setInventory(inventoryData);
+      setAlerts(alertsData);
+    } catch (err) {
+      setError(
+        "Unable to connect to backend. Make sure FastAPI is running on port 8000."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+
+    const interval = setInterval(fetchData, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
+      const type = alert.alert_type || "";
+      const destination = alert.destination || "";
+
       const matchesFilter =
-        alertFilter === "ALL" || alert.type === alertFilter;
+        alertFilter === "ALL" || type === alertFilter;
 
       const matchesSearch =
-        alert.type.toLowerCase().includes(search.toLowerCase()) ||
-        alert.endpoint.toLowerCase().includes(search.toLowerCase());
+        type.toLowerCase().includes(search.toLowerCase()) ||
+        destination.toLowerCase().includes(search.toLowerCase());
 
       return matchesFilter && matchesSearch;
     });
-  }, [alertFilter, search]);
+  }, [alerts, alertFilter, search]);
 
   const shadowCount = inventory.filter(
-    (item) => item.status === "SHADOW API"
+    (item) => item.documented === false
   ).length;
 
-  const bolaCount = alerts.filter((alert) => alert.type === "BOLA").length;
+  const bolaCount = alerts.filter(
+    (alert) => alert.alert_type === "BOLA"
+  ).length;
 
-  const bflaCount = alerts.filter((alert) => alert.type === "BFLA").length;
+  const bflaCount = alerts.filter(
+    (alert) => alert.alert_type === "BFLA"
+  ).length;
 
   return (
     <div style={styles.app}>
-      {/* HEADER */}
       <header style={styles.header}>
         <div>
           <h1 style={styles.title}>API-SENTINEL</h1>
@@ -114,179 +99,242 @@ function App() {
       </header>
 
       <main style={styles.main}>
-
-        {/* STATISTICS */}
-        <section style={styles.cards}>
-          <StatCard
-            title="Total APIs"
-            value={inventory.length}
-          />
-
-          <StatCard
-            title="Shadow APIs"
-            value={shadowCount}
-          />
-
-          <StatCard
-            title="BOLA Attacks"
-            value={bolaCount}
-          />
-
-          <StatCard
-            title="BFLA Attacks"
-            value={bflaCount}
-          />
-        </section>
-
-        {/* RECENT EVENTS */}
-        <section style={styles.panel}>
-          <h2 style={styles.heading}>Recent Events</h2>
-
-          <div style={styles.tableWrapper}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Source IP</th>
-                  <th style={styles.th}>Destination IP</th>
-                  <th style={styles.th}>Protocol</th>
-                  <th style={styles.th}>Source Port</th>
-                  <th style={styles.th}>Destination Port</th>
-                  <th style={styles.th}>Packet Length</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {events.map((event, index) => (
-                  <tr key={index}>
-                    <td style={styles.td}>{event.src_ip}</td>
-                    <td style={styles.td}>{event.dst_ip}</td>
-                    <td style={styles.td}>
-                      <span
-                        style={
-                          event.protocol === "TCP"
-                            ? styles.tcp
-                            : styles.udp
-                        }
-                      >
-                        {event.protocol}
-                      </span>
-                    </td>
-                    <td style={styles.td}>{event.src_port}</td>
-                    <td style={styles.td}>{event.dst_port}</td>
-                    <td style={styles.td}>{event.packet_len}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {error && (
+          <div style={styles.error}>
+            {error}
           </div>
-        </section>
+        )}
 
-        {/* API INVENTORY */}
-        <section style={styles.panel}>
-          <h2 style={styles.heading}>API Inventory</h2>
-
-          <div style={styles.tableWrapper}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Endpoint</th>
-                  <th style={styles.th}>Method</th>
-                  <th style={styles.th}>Status</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {inventory.map((item, index) => (
-                  <tr key={index}>
-                    <td style={styles.td}>{item.endpoint}</td>
-                    <td style={styles.td}>{item.method}</td>
-
-                    <td
-                      style={
-                        item.status === "DOCUMENTED"
-                          ? styles.success
-                          : styles.warning
-                      }
-                    >
-                      {item.status}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {loading ? (
+          <div style={styles.loading}>
+            Loading dashboard data...
           </div>
-        </section>
-
-        {/* SECURITY ALERTS */}
-        <section style={styles.panel}>
-          <div style={styles.alertHeader}>
-            <h2 style={styles.heading}>Security Alerts</h2>
-
-            <div style={styles.controls}>
-              <input
-                type="text"
-                placeholder="Search alerts..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={styles.search}
+        ) : (
+          <>
+            {/* STATISTICS */}
+            <section style={styles.cards}>
+              <StatCard
+                title="Total APIs"
+                value={inventory.length}
               />
 
-              <select
-                value={alertFilter}
-                onChange={(e) => setAlertFilter(e.target.value)}
-                style={styles.select}
-              >
-                <option value="ALL">All</option>
-                <option value="BOLA">BOLA</option>
-                <option value="BFLA">BFLA</option>
-                <option value="Shadow API">Shadow API</option>
-              </select>
-            </div>
-          </div>
+              <StatCard
+                title="Shadow APIs"
+                value={shadowCount}
+              />
 
-          {filteredAlerts.length === 0 ? (
-            <div style={styles.noAlerts}>
-              No alerts found.
-            </div>
-          ) : (
-            filteredAlerts.map((alert, index) => (
-              <div key={index} style={styles.alert}>
-                <div>
-                  <strong style={styles.alertType}>
-                    {alert.type}
-                  </strong>
+              <StatCard
+                title="BOLA Attacks"
+                value={bolaCount}
+              />
 
-                  <p style={styles.endpoint}>
-                    {alert.endpoint}
-                  </p>
+              <StatCard
+                title="BFLA Attacks"
+                value={bflaCount}
+              />
+            </section>
+
+            {/* RECENT EVENTS */}
+            <section style={styles.panel}>
+              <h2 style={styles.heading}>Recent Events</h2>
+
+              {events.length === 0 ? (
+                <div style={styles.noData}>
+                  No events found.
                 </div>
+              ) : (
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Source IP</th>
+                        <th style={styles.th}>Destination IP</th>
+                        <th style={styles.th}>Protocol</th>
+                        <th style={styles.th}>Source Port</th>
+                        <th style={styles.th}>Destination Port</th>
+                        <th style={styles.th}>Packet Length</th>
+                      </tr>
+                    </thead>
 
-                <span
-                  style={{
-                    ...styles.badge,
-                    ...(alert.severity === "CRITICAL"
-                      ? styles.critical
-                      : alert.severity === "HIGH"
-                      ? styles.high
-                      : styles.medium),
-                  }}
-                >
-                  {alert.severity}
-                </span>
+                    <tbody>
+                      {events.map((event) => (
+                        <tr key={event.id}>
+                          <td style={styles.td}>
+                            {event.src_ip || "-"}
+                          </td>
+                          <td style={styles.td}>
+                            {event.dst_ip || "-"}
+                          </td>
+                          <td style={styles.td}>
+                            <span
+                              style={
+                                event.protocol === "TCP"
+                                  ? styles.tcp
+                                  : styles.udp
+                              }
+                            >
+                              {event.protocol || "-"}
+                            </span>
+                          </td>
+                          <td style={styles.td}>
+                            {event.src_port || "-"}
+                          </td>
+                          <td style={styles.td}>
+                            {event.dst_port || "-"}
+                          </td>
+                          <td style={styles.td}>
+                            {event.packet_len || "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
 
-                <span
-                  style={
-                    alert.status === "BLOCKED"
-                      ? styles.blocked
-                      : styles.detected
-                  }
-                >
-                  {alert.status}
-                </span>
+            {/* API INVENTORY */}
+            <section style={styles.panel}>
+              <h2 style={styles.heading}>API Inventory</h2>
+
+              {inventory.length === 0 ? (
+                <div style={styles.noData}>
+                  No APIs found.
+                </div>
+              ) : (
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Endpoint</th>
+                        <th style={styles.th}>Method</th>
+                        <th style={styles.th}>Destination</th>
+                        <th style={styles.th}>Status</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {inventory.map((item) => (
+                        <tr key={item.id}>
+                          <td style={styles.td}>
+                            {item.path || "Network Service"}
+                          </td>
+
+                          <td style={styles.td}>
+                            {item.method || "-"}
+                          </td>
+
+                          <td style={styles.td}>
+                            {item.dst_ip || "-"}:
+                            {item.dst_port || "-"}
+                          </td>
+
+                          <td
+                            style={
+                              item.documented
+                                ? styles.success
+                                : styles.warning
+                            }
+                          >
+                            {item.documented
+                              ? "DOCUMENTED"
+                              : "SHADOW API"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* SECURITY ALERTS */}
+            <section style={styles.panel}>
+              <div style={styles.alertHeader}>
+                <h2 style={styles.heading}>
+                  Security Alerts
+                </h2>
+
+                <div style={styles.controls}>
+                  <input
+                    type="text"
+                    placeholder="Search alerts..."
+                    value={search}
+                    onChange={(e) =>
+                      setSearch(e.target.value)
+                    }
+                    style={styles.search}
+                  />
+
+                  <select
+                    value={alertFilter}
+                    onChange={(e) =>
+                      setAlertFilter(e.target.value)
+                    }
+                    style={styles.select}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="BOLA">BOLA</option>
+                    <option value="BFLA">BFLA</option>
+                    <option value="SHADOW_API">
+                      Shadow API
+                    </option>
+                  </select>
+                </div>
               </div>
-            ))
-          )}
-        </section>
+
+              {filteredAlerts.length === 0 ? (
+                <div style={styles.noData}>
+                  No alerts found.
+                </div>
+              ) : (
+                filteredAlerts.map((alert) => (
+                  <div
+                    key={alert.id}
+                    style={styles.alert}
+                  >
+                    <div>
+                      <strong style={styles.alertType}>
+                        {alert.alert_type}
+                      </strong>
+
+                      <p style={styles.endpoint}>
+                        {alert.destination || "Unknown endpoint"}
+                      </p>
+
+                      <p style={styles.description}>
+                        {alert.description}
+                      </p>
+                    </div>
+
+                    <span
+                      style={{
+                        ...styles.badge,
+                        ...(alert.severity === "CRITICAL"
+                          ? styles.critical
+                          : alert.severity === "HIGH"
+                          ? styles.high
+                          : styles.medium),
+                      }}
+                    >
+                      {alert.severity}
+                    </span>
+
+                    <span
+                      style={
+                        alert.status === "BLOCKED"
+                          ? styles.blocked
+                          : styles.detected
+                      }
+                    >
+                      {alert.status}
+                    </span>
+                  </div>
+                ))
+              )}
+            </section>
+          </>
+        )}
       </main>
 
       <footer style={styles.footer}>
@@ -484,6 +532,12 @@ const styles = {
     color: "#94a3b8",
   },
 
+  description: {
+    margin: "6px 0 0",
+    color: "#64748b",
+    fontSize: "13px",
+  },
+
   badge: {
     padding: "6px 10px",
     borderRadius: "6px",
@@ -518,10 +572,25 @@ const styles = {
     fontWeight: "bold",
   },
 
-  noAlerts: {
+  noData: {
     padding: "30px",
     textAlign: "center",
     color: "#94a3b8",
+  },
+
+  loading: {
+    padding: "50px",
+    textAlign: "center",
+    color: "#94a3b8",
+  },
+
+  error: {
+    background: "#7f1d1d",
+    color: "#fecaca",
+    padding: "15px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+    border: "1px solid #991b1b",
   },
 
   footer: {
