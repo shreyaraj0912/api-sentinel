@@ -21,6 +21,8 @@ struct Opt {
 
 #[derive(Debug, Serialize)]
 struct TelemetryEvent {
+    event_id: String,
+
     timestamp: u64,
 
     src_ip: String,
@@ -57,7 +59,7 @@ fn ip_to_string(ip: u32) -> String {
  * Convert FlowEvent to JSON
  */
 
-fn flow_to_json(event: &FlowEvent) -> anyhow::Result<String> {
+fn flow_to_json(event: &FlowEvent, event_id: u64) -> anyhow::Result<String> {
     let src_ip = ip_to_string(event.src_ip);
 
     let dst_ip = ip_to_string(event.dst_ip);
@@ -70,6 +72,7 @@ fn flow_to_json(event: &FlowEvent) -> anyhow::Result<String> {
     .to_string();
 
     let telemetry = TelemetryEvent {
+        event_id: format!("evt-{event_id:06}"),
         timestamp: event.timestamp,
 
         src_ip,
@@ -216,6 +219,8 @@ async fn main() -> anyhow::Result<()> {
      * Main Event Loop
      */
 
+    let mut event_counter: u64 = 0;
+
     loop {
         tokio::select! {
 
@@ -284,8 +289,10 @@ async fn main() -> anyhow::Result<()> {
                      * Convert and print JSON
                      */
 
+                    event_counter += 1;
                     match flow_to_json(
-                        event
+                        event,
+                        event_counter,
                     ) {
 
                         Ok(json) => {
