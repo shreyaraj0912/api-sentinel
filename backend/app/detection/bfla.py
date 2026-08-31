@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy.orm import Session
 
 from .alert_helper import create_alert
@@ -11,10 +13,26 @@ ROLE_PERMISSIONS = {
     "ADMIN": {
         ("GET", "/api/profile"),
         ("GET", "/api/users"),
-        ("DELETE", "/api/users"),
+        ("DELETE", "/api/users/{id}"),
         ("POST", "/api/admin"),
     },
 }
+
+
+def normalize_path(path: str) -> str:
+    """
+    Convert numeric path components into {id}.
+
+    Example:
+        /api/users/10
+        -> /api/users/{id}
+    """
+
+    return re.sub(
+        r"/\d+(?=/|$)",
+        "/{id}",
+        path,
+    )
 
 
 def detect_bfla(
@@ -26,11 +44,16 @@ def detect_bfla(
     src_ip: str | None = None,
 ):
     """
-    Prototype BFLA detector based on a static
-    role/endpoint permission table.
+    Prototype BFLA detector based on role/endpoint rules.
     """
 
-    allowed = (method.upper(), path) in ROLE_PERMISSIONS.get(
+    normalized_method = method.upper()
+    normalized_path = normalize_path(path)
+
+    allowed = (
+        normalized_method,
+        normalized_path,
+    ) in ROLE_PERMISSIONS.get(
         role.upper(),
         set(),
     )
@@ -51,7 +74,8 @@ def detect_bfla(
         evidence={
             "user_id": user_id,
             "role": role,
-            "method": method.upper(),
+            "method": normalized_method,
             "path": path,
+            "normalized_path": normalized_path,
         },
     )

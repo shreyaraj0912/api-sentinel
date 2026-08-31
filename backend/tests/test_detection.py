@@ -118,3 +118,35 @@ def test_shadow_api_unknown_endpoint_creates_alert(db_session):
     alerts = db_session.query(Alert).all()
 
     assert len(alerts) == 1
+
+def test_bfla_admin_can_delete_user(db_session):
+    result = detect_bfla(
+        db=db_session,
+        user_id="admin1",
+        role="ADMIN",
+        method="DELETE",
+        path="/api/users/10",
+        src_ip="192.168.1.10",
+    )
+
+    assert result is None
+
+    alerts = db_session.query(Alert).all()
+
+    assert len(alerts) == 0
+def test_bfla_normal_user_cannot_delete_user(db_session):
+    result = detect_bfla(
+        db=db_session,
+        user_id="userA",
+        role="USER",
+        method="DELETE",
+        path="/api/users/10",
+        src_ip="192.168.1.10",
+    )
+
+    assert result is not None
+    assert result.alert_type == "BFLA"
+
+    alerts = db_session.query(Alert).all()
+
+    assert len(alerts) == 1
