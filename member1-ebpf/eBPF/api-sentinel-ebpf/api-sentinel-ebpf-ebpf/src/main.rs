@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use api_sentinel_ebpf_common::FlowEvent;
 use aya_ebpf::{
     bindings::xdp_action,
     helpers::bpf_ktime_get_ns,
@@ -9,150 +10,175 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 
-use api_sentinel_ebpf_common::FlowEvent;
-
 #[map]
-static EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
-
-const ETH_P_IP: u16 = 0x0800;
-const IPPROTO_TCP: u8 = 6;
-const IPPROTO_UDP: u8 = 17;
+static EVENTS: RingBuf = RingBuf::with_byte_size(1024 * 1024, 0);
 
 #[xdp]
 pub fn api_sentinel_ebpf(ctx: XdpContext) -> u32 {
     match try_api_sentinel_ebpf(ctx) {
         Ok(ret) => ret,
-        Err(_) => xdp_action::XDP_ABORTED,
+        Err(_) => xdp_action::XDP_PASS,
     }
 }
 
-#[inline(always)]
-unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, u32> {
-    let start = ctx.data();
-    let end = ctx.data_end();
+fn try_api_sentinel_ebpf(ctx: XdpContext) -> Result<u32, ()> {
+    /*
+     * Ethernet Header
+     *
+     * Destination MAC = 6 bytes
+     * Source MAC      = 6 bytes
+     * EtherType       = 2 bytes
+     *
+     * Total = 14 bytes
+     */
 
-    let len = core::mem::size_of::<T>();
+    let eth_proto = unsafe { read_u16(&ctx, 12)? };
 
-    let ptr = start + offset;
-
-    if ptr + len > end {
-        return Err(xdp_action::XDP_ABORTED);
-    }
-
-    Ok(ptr as *const T)
-}
-
-fn try_api_sentinel_ebpf(ctx: XdpContext) -> Result<u32, u32> {
-    let data_start = ctx.data();
-    let data_end = ctx.data_end();
-
-    let packet_len = (data_end - data_start) as u32;
-
-    // Ethernet header = 14 bytes
-    if packet_len < 14 {
+    // Ethernet type must be IPv4
+    if u16::from_be(eth_proto) != 0x0800 {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    // EtherType is at Ethernet offset 12
-    let eth_proto_ptr = unsafe { ptr_at::<u16>(&ctx, 12)? };
+    let ip_offset = 14usize;
 
-    let eth_proto = unsafe { u16::from_be(*eth_proto_ptr) };
+    /*
+     * IPv4 Header
+     */
 
-    // We currently process IPv4 only.
-    if eth_proto != ETH_P_IP {
-        return Ok(xdp_action::XDP_PASS);
-    }
-
-    // IPv4 header begins at offset 14.
-    let ip_ptr = unsafe { ptr_at::<u8>(&ctx, 14)? };
-
-    let version_ihl = unsafe { *ip_ptr };
+    let version_ihl = unsafe { read_u8(&ctx, ip_offset)? };
 
     let version = version_ihl >> 4;
-    let ihl = (version_ihl & 0x0f) as usize;
 
+    // Only IPv4
     if version != 4 {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    // IPv4 header length = IHL * 4
-    let ip_header_len = ihl * 4;
+    // Internet Header Length
+    let ihl = ((version_ihl & 0x0f) * 4) as usize;
 
-    if ip_header_len < 20 {
+    // Minimum IPv4 header size
+    if ihl < 20 {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    if packet_len < (14 + ip_header_len) as u32 {
+    // Protocol field
+    let protocol = unsafe { read_u8(&ctx, ip_offset + 9)? };
+
+    // TCP = 6
+    // UDP = 17
+    if protocol != 6 && protocol != 17 {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    // IPv4 protocol field
-    let protocol_ptr = unsafe {
-        ptr_at::<u8>(&ctx, 14 + 9)?
+    /*
+     * Source IP
+     */
+
+    let src_ip = unsafe { read_u32(&ctx, ip_offset + 12)? };
+
+    /*
+     * Destination IP
+     */
+
+    let dst_ip = unsafe { read_u32(&ctx, ip_offset + 16)? };
+
+    /*
+     * Transport Header
+     */
+
+    let transport_offset = ip_offset + ihl;
+
+    let src_port_raw = unsafe { read_u16(&ctx, transport_offset)? };
+
+    let dst_port_raw = unsafe { read_u16(&ctx, transport_offset + 2)? };
+
+    /*
+     * Packet Length
+     */
+
+    let packet_len = (ctx.data_end() - ctx.data()) as u32;
+
+    /*
+     * Create Flow Event
+     */
+
+    let event = FlowEvent {
+        timestamp: unsafe { bpf_ktime_get_ns() },
+
+        src_ip,
+        dst_ip,
+
+        src_port: u16::from_be(src_port_raw),
+        dst_port: u16::from_be(dst_port_raw),
+
+        protocol,
+
+        _pad: [0; 3],
+
+        packet_len,
     };
 
-    let protocol = unsafe { *protocol_ptr };
+    /*
+     * Send Event to Userspace
+     */
 
-    // Source IPv4 address
-    let src_ip_ptr = unsafe {
-        ptr_at::<u32>(&ctx, 14 + 12)?
-    };
-
-    // Destination IPv4 address
-    let dst_ip_ptr = unsafe {
-        ptr_at::<u32>(&ctx, 14 + 16)?
-    };
-
-    let src_ip = unsafe { *src_ip_ptr };
-    let dst_ip = unsafe { *dst_ip_ptr };
-
-    // TCP/UDP header starts after IPv4 header.
-    let transport_offset = 14 + ip_header_len;
-
-    let (src_port, dst_port) = if protocol == IPPROTO_TCP || protocol == IPPROTO_UDP {
-    let src_port_ptr = unsafe {
-        ptr_at::<u16>(&ctx, transport_offset)?
-    };
-
-    let dst_port_ptr = unsafe {
-        ptr_at::<u16>(&ctx, transport_offset + 2)?
-    };
-
-    (
-        unsafe { u16::from_be(*src_port_ptr) },
-        unsafe { u16::from_be(*dst_port_ptr) },
-    )
-} else {
-    return Ok(xdp_action::XDP_PASS);
-};
-
-
-    // Reserve an event in the RingBuf.
     if let Some(mut entry) = EVENTS.reserve::<FlowEvent>(0) {
-        entry.write(FlowEvent {
-            timestamp: unsafe { bpf_ktime_get_ns() },
-            src_ip,
-            dst_ip,
-            src_port,
-            dst_port,
-            protocol,
-            _pad: 0,
-            packet_len,
-        });
-
+        entry.write(event);
         entry.submit(0);
     }
 
-    // Always allow the packet to continue.
     Ok(xdp_action::XDP_PASS)
 }
 
-#[cfg(not(test))]
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
+/*
+ * Safe Packet Reading Helpers
+ */
+
+unsafe fn read_u8(ctx: &XdpContext, offset: usize) -> Result<u8, ()> {
+    let start = ctx.data();
+    let end = ctx.data_end();
+
+    let ptr = (start + offset) as *const u8;
+
+    if (ptr as usize + core::mem::size_of::<u8>()) > end as usize {
+        return Err(());
+    }
+
+    Ok(unsafe { ptr.read_unaligned() })
 }
 
-#[unsafe(link_section = "license")]
-#[unsafe(no_mangle)]
-static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
+unsafe fn read_u16(ctx: &XdpContext, offset: usize) -> Result<u16, ()> {
+    let start = ctx.data();
+    let end = ctx.data_end();
+
+    let ptr = (start + offset) as *const u16;
+
+    if (ptr as usize + core::mem::size_of::<u16>()) > end as usize {
+        return Err(());
+    }
+
+    Ok(unsafe { ptr.read_unaligned() })
+}
+
+unsafe fn read_u32(ctx: &XdpContext, offset: usize) -> Result<u32, ()> {
+    let start = ctx.data();
+    let end = ctx.data_end();
+
+    let ptr = (start + offset) as *const u32;
+
+    if (ptr as usize + core::mem::size_of::<u32>()) > end as usize {
+        return Err(());
+    }
+
+    Ok(unsafe { ptr.read_unaligned() })
+}
+
+/*
+ * Required Panic Handler
+ */
+
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo) -> ! {
+    loop {}
+}

@@ -1,0 +1,180 @@
+#![no_std]
+#![no_main]
+
+use core::{mem, ptr};
+
+use api_sentinel_ebpf_common::FlowEvent;
+use aya_ebpf::{
+    bindings::xdp_action,
+    macros::{map, xdp},
+    maps::RingBuf,
+    programs::XdpContext,
+};
+use aya_log_ebpf::info;
+
+const ETH_P_IP: u16 = 0x0800;
+const IPPROTO_TCP: u8 = 6;
+const IPPROTO_UDP: u8 = 17;
+
+#[map]
+static EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
+
+#[inline(always)]
+unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, u32> {
+    let start = ctx.data();
+    let end = ctx.data_end();
+
+    let ptr = (start + offset) as *const T;
+
+    if (start + offset + mem::size_of::<T>()) > end {
+        return Err(xdp_action::XDP_PASS);
+    }
+
+    Ok(ptr)
+}
+
+#[xdp]
+pub fn api_sentinel_ebpf(ctx: XdpContext) -> u32 {
+    match try_api_sentinel_ebpf(ctx) {
+        Ok(ret) => ret,
+        Err(_) => xdp_action::XDP_PASS,
+    }
+}
+
+fn try_api_sentinel_ebpf(ctx: XdpContext) -> Result<u32, u32> {
+    let packet_len = (ctx.data_end() - ctx.data()) as u32;
+
+    // Ethernet header
+    let eth_proto_ptr = unsafe { ptr_at::<u16>(&ctx, 12)? };
+    let eth_proto = unsafe { u16::from_be(*eth_proto_ptr) };
+
+    // Only IPv4
+    if eth_proto != ETH_P_IP {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    // IPv4 header
+    let ip_header_ptr = unsafe { ptr_at::<u8>(&ctx, 14)? };
+
+    let version_ihl = unsafe { *ip_header_ptr };
+
+    let version = version_ihl >> 4;
+    let ihl = version_ihl & 0x0f;
+
+    if version != 4 {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    let ip_header_len = (ihl as usize) * 4;
+
+    if ip_header_len < 20 {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    if packet_len < (14 + ip_header_len) as u32 {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    // Protocol
+    let protocol_ptr = unsafe { ptr_at::<u8>(&ctx, 14 + 9)? };
+    let protocol = unsafe { *protocol_ptr };
+
+    // Source IPv4 address
+    let src_ip_ptr = unsafe { ptr_at::<u32>(&ctx, 14 + 12)? };
+
+    // Destination IPv4 address
+    let dst_ip_ptr = unsafe { ptr_at::<u32>(&ctx, 14 + 16)? };
+
+    let src_ip = unsafe { *src_ip_ptr };
+    let dst_ip = unsafe { *dst_ip_ptr };
+
+    // TCP/UDP header starts after IPv4 header.
+    let transport_offset = 14 + ip_header_len;
+
+    let (src_port, dst_port) = if protocol == IPPROTO_TCP || protocol == IPPROTO_UDP {
+        let src_port_ptr = unsafe { ptr_at::<u16>(&ctx, transport_offset)? };
+
+        let dst_port_ptr = unsafe { ptr_at::<u16>(&ctx, transport_offset + 2)? };
+
+        (unsafe { u16::from_be(*src_port_ptr) }, unsafe {
+            u16::from_be(*dst_port_ptr)
+        })
+    } else {
+        return Ok(xdp_action::XDP_PASS);
+    };
+
+    // Capture TCP payload.
+    //
+    // This is only the first 128 bytes of the payload.
+    // It is enough for testing HTTP request metadata.
+    let mut payload = [0u8; 128];
+    let mut payload_len = 0u16;
+
+    if protocol == IPPROTO_TCP {
+        // Minimum TCP header = 20 bytes.
+        if packet_len >= (transport_offset + 20) as u32 {
+            let tcp_header_ptr = unsafe { ptr_at::<u8>(&ctx, transport_offset)? };
+
+            // TCP data offset is stored in the upper 4 bits
+            // of byte 12.
+            let tcp_data_offset = ((unsafe { *tcp_header_ptr.add(12) } >> 4) as usize) * 4;
+
+            if tcp_data_offset >= 20 && packet_len >= (transport_offset + tcp_data_offset) as u32 {
+                let payload_offset = transport_offset + tcp_data_offset;
+
+                let available = packet_len as usize - payload_offset;
+
+                let copy_len = core::cmp::min(available, payload.len());
+
+                for i in 0..copy_len {
+                    let byte_ptr = unsafe { ptr_at::<u8>(&ctx, payload_offset + i)? };
+
+                    payload[i] = unsafe { *byte_ptr };
+                }
+
+                payload_len = copy_len as u16;
+            }
+        }
+    }
+
+    // Submit event to RingBuf.
+    if let Some(mut entry) = EVENTS.reserve::<FlowEvent>(0) {
+        entry.write(FlowEvent {
+            timestamp: unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() },
+            src_ip,
+            dst_ip,
+            src_port,
+            dst_port,
+            protocol,
+            _pad: 0,
+            packet_len,
+            payload_len,
+            _payload_pad: 0,
+            payload,
+        });
+
+        entry.submit(0);
+    }
+
+    info!(
+        &ctx,
+        "packet src_port={} dst_port={} protocol={} len={}",
+        src_port,
+        dst_port,
+        protocol,
+        packet_len
+    );
+
+    // Always allow traffic through.
+    Ok(xdp_action::XDP_PASS)
+}
+
+#[cfg(not(test))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
+
+#[unsafe(link_section = "license")]
+#[unsafe(no_mangle)]
+static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";

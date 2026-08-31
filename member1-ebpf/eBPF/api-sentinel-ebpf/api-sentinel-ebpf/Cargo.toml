@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 api-sentinel-ebpf-common = { path = "../api-sentinel-ebpf-common", features = ["user"] }
-
 anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
 aya-log = { workspace = true }
@@ -23,6 +22,8 @@ tokio = { workspace = true, features = [
     "time",
 ] }
 clap = { workspace = true, features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
