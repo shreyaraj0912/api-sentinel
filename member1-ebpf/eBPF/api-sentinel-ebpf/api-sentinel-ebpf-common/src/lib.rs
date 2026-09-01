@@ -12,6 +12,7 @@ pub struct FlowEvent {
     pub dst_port: u16,
 
     pub protocol: u8,
+
     pub _pad: [u8; 3],
 
     pub packet_len: u32,
