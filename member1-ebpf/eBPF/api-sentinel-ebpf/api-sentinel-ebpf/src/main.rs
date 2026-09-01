@@ -41,15 +41,10 @@ struct TelemetryEvent {
 
 fn ip_to_string(ip: u32) -> String {
     let bytes = ip.to_ne_bytes();
-
     std::net::Ipv4Addr::from(bytes).to_string()
 }
 
 fn flow_to_json(event: &FlowEvent, event_id: u64) -> anyhow::Result<String> {
-    let src_ip = ip_to_string(event.src_ip);
-
-    let dst_ip = ip_to_string(event.dst_ip);
-
     let protocol = match event.protocol {
         6 => "TCP",
         17 => "UDP",
@@ -62,8 +57,8 @@ fn flow_to_json(event: &FlowEvent, event_id: u64) -> anyhow::Result<String> {
 
         timestamp: event.timestamp,
 
-        src_ip,
-        dst_ip,
+        src_ip: ip_to_string(event.src_ip),
+        dst_ip: ip_to_string(event.dst_ip),
 
         src_port: event.src_port,
         dst_port: event.dst_port,
@@ -72,9 +67,11 @@ fn flow_to_json(event: &FlowEvent, event_id: u64) -> anyhow::Result<String> {
 
         packet_len: event.packet_len,
 
+        // HTTP metadata is reserved for future parsing.
         method: None,
         path: None,
 
+        // Detection enrichment fields.
         user_id: None,
         role: None,
         object_id: None,
@@ -97,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
 
     if ret != 0 {
-        debug!("failed to increase memlock limit, ret={ret}");
+        debug!("failed to increase memlock limit");
     }
 
     let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
@@ -167,17 +164,25 @@ async fn main() -> anyhow::Result<()> {
                 std::time::Duration::from_millis(50)
             ) => {
                 while let Some(item) = events.next() {
-                    if item.len() < core::mem::size_of::<FlowEvent>() {
+                    if item.len()
+                        < core::mem::size_of::<FlowEvent>()
+                    {
                         continue;
                     }
 
                     let event = unsafe {
-                        &*(item.as_ptr() as *const FlowEvent)
+                        &*(
+                            item.as_ptr()
+                                as *const FlowEvent
+                        )
                     };
 
                     event_counter += 1;
 
-                    match flow_to_json(event, event_counter) {
+                    match flow_to_json(
+                        event,
+                        event_counter,
+                    ) {
                         Ok(json) => {
                             println!("{json}");
                         }
