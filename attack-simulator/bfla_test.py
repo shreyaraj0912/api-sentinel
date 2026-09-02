@@ -16,23 +16,17 @@ def main():
     path = "/api/users/10"
 
     try:
-        # -----------------------------------------------------
         # Check Mock API
-        # -----------------------------------------------------
-
         requests.get(
             f"{MOCK_API_URL}/",
             timeout=5,
         )
 
-        # -----------------------------------------------------
-        # Simulate normal USER attempting ADMIN operation
-        # -----------------------------------------------------
-
         print("Role: USER")
         print(f"Attempt: DELETE {path}")
         print()
 
+        # Send unauthorized operation to Mock API
         mock_response = requests.delete(
             f"{MOCK_API_URL}{path}",
             timeout=5,
@@ -43,10 +37,7 @@ def main():
             f" -> {mock_response.status_code}"
         )
 
-        # -----------------------------------------------------
-        # Send corresponding event to backend
-        # -----------------------------------------------------
-
+        # Build security event for Member 2 backend
         event = {
             "event_id": f"sim-bfla-{uuid.uuid4()}",
             "timestamp": time.time_ns(),
@@ -66,6 +57,7 @@ def main():
             "user_id": "userA",
             "role": "USER",
 
+            # Deliberately null so this test focuses on BFLA.
             "object_id": None,
         }
 
@@ -89,8 +81,8 @@ def main():
     except requests.exceptions.ConnectionError:
         print()
         print("ERROR: Could not connect to a required service.")
-        print("Mock API -> http://127.0.0.1:9000")
-        print("Backend  -> http://127.0.0.1:8000")
+        print("Mock API: http://127.0.0.1:9000")
+        print("Backend:  http://127.0.0.1:8000")
 
     except requests.exceptions.Timeout:
         print("ERROR: Request timed out.")

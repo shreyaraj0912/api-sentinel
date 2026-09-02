@@ -14,32 +14,17 @@ def main():
     print("================================")
 
     try:
-        # -----------------------------------------------------
         # Check Mock API
-        # -----------------------------------------------------
-
         requests.get(
             f"{MOCK_API_URL}/",
             timeout=5,
         )
 
-        # -----------------------------------------------------
-        # User A owns these objects in our prototype.
-        # -----------------------------------------------------
-
-        owned_objects = ["101", "102"]
-
-        print(
-            f"User A owns objects: "
-            f"{', '.join(owned_objects)}"
-        )
+        print("User A owns objects: 101, 102")
         print()
 
-        # -----------------------------------------------------
-        # Normal requests
-        # -----------------------------------------------------
-
-        for object_id in owned_objects:
+        # Normal object access
+        for object_id in ["101", "102"]:
             response = requests.get(
                 f"{MOCK_API_URL}/api/users/{object_id}",
                 timeout=5,
@@ -50,10 +35,7 @@ def main():
                 f" -> {response.status_code}"
             )
 
-        # -----------------------------------------------------
         # Suspicious object access
-        # -----------------------------------------------------
-
         suspicious_object = "103"
 
         response = requests.get(
@@ -66,11 +48,7 @@ def main():
             f" -> {response.status_code}"
         )
 
-        # -----------------------------------------------------
-        # Send corresponding security event
-        # to Member 2 backend
-        # -----------------------------------------------------
-
+        # Build telemetry/security event
         event = {
             "event_id": f"sim-bola-{uuid.uuid4()}",
             "timestamp": time.time_ns(),
@@ -92,6 +70,7 @@ def main():
             "object_id": suspicious_object,
         }
 
+        # Send event to Member 2 backend
         backend_response = requests.post(
             f"{BACKEND_URL}/events",
             json=event,
@@ -112,10 +91,8 @@ def main():
     except requests.exceptions.ConnectionError:
         print()
         print("ERROR: Could not connect to a required service.")
-        print()
-        print("Make sure these are running:")
-        print("Mock API  -> http://127.0.0.1:9000")
-        print("Backend   -> http://127.0.0.1:8000")
+        print("Mock API: http://127.0.0.1:9000")
+        print("Backend:  http://127.0.0.1:8000")
 
     except requests.exceptions.Timeout:
         print("ERROR: Request timed out.")

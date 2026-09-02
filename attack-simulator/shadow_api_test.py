@@ -16,24 +16,18 @@ def main():
     path = "/api/internal/debug"
 
     try:
-        # -----------------------------------------------------
         # Check Mock API
-        # -----------------------------------------------------
-
         requests.get(
             f"{MOCK_API_URL}/",
             timeout=5,
         )
-
-        # -----------------------------------------------------
-        # Request undocumented endpoint
-        # -----------------------------------------------------
 
         print(
             f"Requesting undocumented endpoint: {path}"
         )
         print()
 
+        # Request from Mock API
         mock_response = requests.get(
             f"{MOCK_API_URL}{path}",
             timeout=5,
@@ -44,10 +38,7 @@ def main():
             f" -> {mock_response.status_code}"
         )
 
-        # -----------------------------------------------------
         # Send corresponding event to backend
-        # -----------------------------------------------------
-
         event = {
             "event_id": f"sim-shadow-{uuid.uuid4()}",
             "timestamp": time.time_ns(),
@@ -93,8 +84,8 @@ def main():
     except requests.exceptions.ConnectionError:
         print()
         print("ERROR: Could not connect to a required service.")
-        print("Mock API -> http://127.0.0.1:9000")
-        print("Backend  -> http://127.0.0.1:8000")
+        print("Mock API: http://127.0.0.1:9000")
+        print("Backend:  http://127.0.0.1:8000")
 
     except requests.exceptions.Timeout:
         print("ERROR: Request timed out.")
