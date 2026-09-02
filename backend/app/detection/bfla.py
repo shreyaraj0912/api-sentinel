@@ -9,6 +9,7 @@ ROLE_PERMISSIONS = {
     "USER": {
         ("GET", "/api/profile"),
         ("GET", "/api/users"),
+        ("GET", "/api/users/{id}"),
     },
     "ADMIN": {
         ("GET", "/api/profile"),

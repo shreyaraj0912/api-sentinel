@@ -1,22 +1,103 @@
+import time
+import uuid
+
 import requests
 
 
-BASE_URL = "http://127.0.0.1:9000"
+MOCK_API_URL = "http://127.0.0.1:9000"
+BACKEND_URL = "http://127.0.0.1:8000"
 
 
 def main():
-    print("=== BFLA Simulation ===")
+    print("================================")
+    print("        BFLA SIMULATION")
+    print("================================")
 
-    response = requests.delete(
-        f"{BASE_URL}/api/users/10"
-    )
+    path = "/api/users/10"
 
-    print(
-        f"USER DELETE /api/users/10 "
-        f"-> {response.status_code}"
-    )
+    try:
+        # -----------------------------------------------------
+        # Check Mock API
+        # -----------------------------------------------------
+
+        requests.get(
+            f"{MOCK_API_URL}/",
+            timeout=5,
+        )
+
+        # -----------------------------------------------------
+        # Simulate normal USER attempting ADMIN operation
+        # -----------------------------------------------------
+
+        print("Role: USER")
+        print(f"Attempt: DELETE {path}")
+        print()
+
+        mock_response = requests.delete(
+            f"{MOCK_API_URL}{path}",
+            timeout=5,
+        )
+
+        print(
+            f"DELETE {path}"
+            f" -> {mock_response.status_code}"
+        )
+
+        # -----------------------------------------------------
+        # Send corresponding event to backend
+        # -----------------------------------------------------
+
+        event = {
+            "event_id": f"sim-bfla-{uuid.uuid4()}",
+            "timestamp": time.time_ns(),
+
+            "src_ip": "127.0.0.1",
+            "dst_ip": "127.0.0.1",
+
+            "src_port": 50002,
+            "dst_port": 9000,
+
+            "protocol": "TCP",
+            "packet_len": 512,
+
+            "method": "DELETE",
+            "path": path,
+
+            "user_id": "userA",
+            "role": "USER",
+
+            "object_id": None,
+        }
+
+        backend_response = requests.post(
+            f"{BACKEND_URL}/events",
+            json=event,
+            timeout=5,
+        )
+
+        print(
+            f"POST /events -> "
+            f"{backend_response.status_code}"
+        )
+
+        if backend_response.status_code == 201:
+            print("BFLA event accepted by backend.")
+        else:
+            print("Backend rejected the BFLA event.")
+            print(backend_response.text)
+
+    except requests.exceptions.ConnectionError:
+        print()
+        print("ERROR: Could not connect to a required service.")
+        print("Mock API -> http://127.0.0.1:9000")
+        print("Backend  -> http://127.0.0.1:8000")
+
+    except requests.exceptions.Timeout:
+        print("ERROR: Request timed out.")
+
+    except requests.exceptions.RequestException as exc:
+        print(f"ERROR: HTTP request failed: {exc}")
 
 
 if __name__ == "__main__":
     main()
-    

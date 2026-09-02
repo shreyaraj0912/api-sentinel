@@ -1,6 +1,24 @@
+import re
+
 from sqlalchemy.orm import Session
 
 from .alert_helper import create_alert
+
+
+def normalize_path(path: str) -> str:
+    """
+    Convert numeric path components into {id}.
+
+    Example:
+        /api/users/103
+        -> /api/users/{id}
+    """
+
+    return re.sub(
+        r"/\d+(?=/|$)",
+        "/{id}",
+        path,
+    )
 
 
 def detect_shadow_api(
@@ -13,13 +31,27 @@ def detect_shadow_api(
     """
     Prototype Shadow API detector.
 
-    Generates an alert when an observed method/path pair
-    is not present in the known/documented API set.
+    An API is considered shadowed only when its normalized
+    method/path combination is not present in the known API set.
     """
 
-    api = (method.upper(), path)
+    normalized_method = method.upper()
+    normalized_path = normalize_path(path)
 
-    if api in known_apis:
+    normalized_known_apis = {
+        (
+            known_method.upper(),
+            normalize_path(known_path),
+        )
+        for known_method, known_path in known_apis
+    }
+
+    observed_api = (
+        normalized_method,
+        normalized_path,
+    )
+
+    if observed_api in normalized_known_apis:
         return None
 
     return create_alert(
@@ -33,14 +65,15 @@ def detect_shadow_api(
             "in the known/documented API inventory."
         ),
         evidence={
-            "method": method.upper(),
+            "method": normalized_method,
             "path": path,
+            "normalized_path": normalized_path,
             "known_apis": [
                 {
-                    "method": item[0],
-                    "path": item[1],
+                    "method": known_method,
+                    "path": known_path,
                 }
-                for item in known_apis
+                for known_method, known_path in known_apis
             ],
         },
     )

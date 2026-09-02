@@ -5,29 +5,36 @@ from pydantic import BaseModel
 
 class EventCreate(BaseModel):
     """
-    Telemetry payload accepted by POST /events.
+    Stable Member 1 -> Member 2 telemetry contract.
 
-    These fields intentionally match the current provisional
-    Member 1 eBPF telemetry format.
+    Network fields are required.
+
+    API/application fields are optional because the current
+    XDP collector does not reliably provide them.
     """
 
-    timestamp: float
+    event_id: str
 
-    src_ip: str | None = None
-    dst_ip: str | None = None
+    timestamp: int
 
-    src_port: int | None = None
-    dst_port: int | None = None
+    src_ip: str
+    dst_ip: str
 
-    protocol: str | None = None
-    packet_len: int | None = None
+    src_port: int
+    dst_port: int
 
+    protocol: str
+    packet_len: int
+
+    # Optional API/application enrichment.
+    method: str | None = None
+    path: str | None = None
+
+    user_id: str | None = None
+    role: str | None = None
+    object_id: str | None = None
 
 class EventResponse(EventCreate):
-    """
-    Event returned by the backend after storage.
-    """
-
     id: int
 
     model_config = {

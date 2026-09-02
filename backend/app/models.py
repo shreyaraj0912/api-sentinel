@@ -13,22 +13,48 @@ def utc_now():
 class Event(Base):
     """
     Stores telemetry events received from the eBPF collector.
+
+    The network fields form the stable Member 1 -> Member 2 contract.
+
+    API/security fields are optional and reserved for future
+    enrichment and mock-service integration.
     """
 
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    timestamp = Column(Float, nullable=False)
+    # Stable external event identifier from Member 1.
+    event_id = Column(
+        String,
+        nullable=False,
+        index=True,
+    )
 
-    src_ip = Column(String, nullable=True)
-    dst_ip = Column(String, nullable=True)
+    # Kernel/collector timestamp.
+    timestamp = Column(
+        Integer,
+        nullable=False,
+    )
 
-    src_port = Column(Integer, nullable=True)
-    dst_port = Column(Integer, nullable=True)
+    # Stable network telemetry.
+    src_ip = Column(String, nullable=False)
+    dst_ip = Column(String, nullable=False)
 
-    protocol = Column(String, nullable=True)
-    packet_len = Column(Integer, nullable=True)
+    src_port = Column(Integer, nullable=False)
+    dst_port = Column(Integer, nullable=False)
+
+    protocol = Column(String, nullable=False)
+
+    packet_len = Column(Integer, nullable=False)
+
+    # Optional API/application context.
+    method = Column(String, nullable=True)
+    path = Column(String, nullable=True)
+
+    user_id = Column(String, nullable=True)
+    role = Column(String, nullable=True)
+    object_id = Column(String, nullable=True)
 
 
 class Inventory(Base):
