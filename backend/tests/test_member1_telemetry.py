@@ -6,7 +6,7 @@ from backend.app.main import app
 client = TestClient(app)
 
 
-def test_member1_network_telemetry_contract():
+def test_member1_telemetry_contract():
     payload = {
         "event_id": "evt-member1-test-001",
         "timestamp": 12604154835332,
