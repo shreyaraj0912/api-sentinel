@@ -17,3 +17,6 @@ If you are developing a production application, we recommend using TypeScript wi
 ### Member 3 Contribution
 
 Member 3 handled the frontend dashboard integration and connected the React dashboard with the backend APIs for displaying events, inventory and security alerts.
+### Integration Verification
+
+The React dashboard was verified with the FastAPI backend. The POST /events endpoint was tested successfully through Swagger with a 201 Created response, and the dashboard displayed the received event, inventory, and security alert data.
