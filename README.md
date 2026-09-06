@@ -31,9 +31,6 @@ The system maintains an inventory of observed services/APIs.
 Inventory information includes:
 - Endpoint/path
 - HTTP method
-- Destination IP
-- Destination port
-- Protocol
 - First seen timestamp
 - Last seen timestamp
 - Request count
@@ -44,7 +41,6 @@ The BOLA detector identifies attempts to access objects outside a user's authori
 When a BOLA violation is detected, the system creates a security alert containing information such as:
 - Alert type
 - Severity
-- Source IP
 - Destination
 - Description
 - Evidence
@@ -53,11 +49,7 @@ The BFLA detector uses role-based endpoint permissions to identify unauthorized 
 If a user attempts an operation that is not permitted for their role, the system generates a HIGH severity BFLA alert.
 ### Security Alerts
 The dashboard displays detected security alerts with:
-- Alert type
-- Severity
 - Status
-- Destination
-- Description
 The dashboard also provides:
 - Alert search
 - Alert-type filtering
@@ -68,7 +60,6 @@ Current alert categories include:
 ### React Security Dashboard
 The dashboard provides:
 - Total APIs
-- Shadow APIs
 - BOLA Attacks
 - BFLA Attacks
 - Recent Events
@@ -108,26 +99,22 @@ api-sentinel/
 |   |
 |   |-- tests/
 |   |-- requirements.txt
-|
 |-- frontend/
 |   |-- src/
 |   |   |-- App.jsx
 |   |   |-- App.css
 |   |   |-- main.jsx
 |   |-- package.json
-|
 |-- README.md
 |-- .gitignore
 ## Backend API Endpoints
 ### Runtime Events
 GET /events
 Returns observed runtime events.
-### API Inventory
 GET /inventory
 Returns all observed API/service inventory entries.
 GET /inventory/{inventory\_id}
 Returns a specific inventory entry.
-### Security Alerts
 GET /alerts
 Returns generated security alerts.
 GET /alerts/{alert\_id}
@@ -157,7 +144,6 @@ Current verified result:
 6 passed
 ## Frontend Production Build
 The frontend production build can be verified with:
-cd frontend
 npm run build
 The Vite production build completes successfully.
 ## Demonstration Flow
@@ -194,4 +180,7 @@ Future improvements may include:
 ## Conclusion
 API-Sentinel demonstrates a runtime API security monitoring workflow in which observed activity is collected, API inventory is maintained, authorization violations are detected, security alerts are generated, and the results are presented through a centralized React dashboard.
 The current MVP focuses on runtime event visibility, API inventory, Shadow API identification, BOLA detection, BFLA detection, security alerts, and frontend-backend integration.
+### Dashboard Verification
 
+The Member 3 dashboard was verified with the FastAPI backend. API inventory, events, and security alerts were checked successfully during local integration testing.
+The dashboard was locally verified with the FastAPI backend, including event ingestion, API inventory, and security alert display.
