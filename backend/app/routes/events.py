@@ -7,6 +7,7 @@ from ..database import get_db
 from ..detection.engine import run_detections
 from ..models import Event, Inventory
 from ..schemas import EventCreate, EventResponse
+from ..detection.path_utils import normalize_path
 
 
 router = APIRouter(
@@ -49,6 +50,8 @@ def create_event(
 
     db.refresh(event)
 
+    normalized_path = normalize_path(event.path)
+
     # =========================================================
     # STEP 2: Update inventory
     # =========================================================
@@ -65,7 +68,7 @@ def create_event(
                 Inventory.dst_ip == event.dst_ip,
                 Inventory.dst_port == event.dst_port,
                 Inventory.protocol == event.protocol,
-                Inventory.path == event.path,
+                Inventory.path == normalized_path,
                 Inventory.method == event.method,
             )
             .first()
@@ -101,7 +104,7 @@ def create_event(
     if inventory_item is None:
 
         inventory_item = Inventory(
-            path=event.path,
+            path=normalized_path,
             method=event.method,
             dst_ip=event.dst_ip,
             dst_port=event.dst_port,

@@ -3,6 +3,7 @@ import re
 from sqlalchemy.orm import Session
 
 from .alert_helper import create_alert
+from .path_utils import normalize_path
 
 
 def normalize_path(path: str) -> str:
