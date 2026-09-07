@@ -92,10 +92,21 @@ function App() {
           </p>
         </div>
 
-        <div style={styles.live}>
-          <span style={styles.dot}></span>
-          SYSTEM ONLINE
-        </div>
+        <div
+  style={{
+    ...styles.live,
+    color: error ? "#ef4444" : "#22c55e",
+  }}
+>
+  <span
+    style={{
+      ...styles.dot,
+      background: error ? "#ef4444" : "#22c55e",
+    }}
+  ></span>
+
+  {error ? "BACKEND OFFLINE" : "SYSTEM ONLINE"}
+</div>
       </header>
 
       <main style={styles.main}>
