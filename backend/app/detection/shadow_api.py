@@ -1,26 +1,7 @@
-import re
-
 from sqlalchemy.orm import Session
 
 from .alert_helper import create_alert
 from .path_utils import normalize_path
-
-
-def normalize_path(path: str) -> str:
-    """
-    Convert numeric path components into {id}.
-
-    Example:
-        /api/users/103
-        -> /api/users/{id}
-    """
-
-    return re.sub(
-        r"/\d+(?=/|$)",
-        "/{id}",
-        path,
-    )
-
 
 def detect_shadow_api(
     db: Session,

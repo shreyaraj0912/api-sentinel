@@ -1,5 +1,3 @@
-import re
-
 from sqlalchemy.orm import Session
 
 from .alert_helper import create_alert
@@ -19,23 +17,6 @@ ROLE_PERMISSIONS = {
         ("POST", "/api/admin"),
     },
 }
-
-
-def normalize_path(path: str) -> str:
-    """
-    Convert numeric path components into {id}.
-
-    Example:
-        /api/users/10
-        -> /api/users/{id}
-    """
-
-    return re.sub(
-        r"/\d+(?=/|$)",
-        "/{id}",
-        path,
-    )
-
 
 def detect_bfla(
     db: Session,
