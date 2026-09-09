@@ -28,3 +28,12 @@ The FastAPI `POST /events` endpoint accepts:
   "protocol": "TCP",
   "packet_len": 512
 }
+## eBPF Timestamp Integration
+
+The eBPF collector uses a kernel monotonic timestamp from `bpf_ktime_get_ns()`.
+
+For backend integration, the timestamp will be converted to Unix epoch seconds in the forwarding layer before being sent to the FastAPI `/events` endpoint.
+
+Flow:
+
+eBPF timestamp → forward_events.py → Unix epoch seconds → EventCreate.timestamp
