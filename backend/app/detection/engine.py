@@ -3,16 +3,23 @@ from sqlalchemy.orm import Session
 from .bfla import detect_bfla
 from .bola import detect_bola
 from .shadow_api import detect_shadow_api
+from ..security.rate_limit_detector import check_rate_limit
 
 
-# Prototype BOLA ownership data.
+# ---------------------------------------------------------
+# Prototype BOLA ownership rules
+# ---------------------------------------------------------
+
 OWNED_OBJECTS = {
     "userA": {"101", "102"},
     "userB": {"201", "202"},
 }
 
 
-# Prototype documented APIs.
+# ---------------------------------------------------------
+# Prototype documented API set
+# ---------------------------------------------------------
+
 KNOWN_APIS = {
     ("GET", "/api/profile"),
     ("GET", "/api/users"),
@@ -33,10 +40,17 @@ def run_detections(
     src_ip: str | None,
 ):
     """
-    Run all applicable API-security detectors.
+    Run the API-Sentinel detection pipeline.
 
-    Network-only events are accepted but do not trigger
-    API-level detectors when the required context is absent.
+    Detection types:
+    - BOLA
+    - BFLA
+    - Shadow API
+    - Rate limiting
+
+    Network-only events can still be stored normally.
+    API-level detections are only performed when the
+    required API/security context is available.
     """
 
     alerts = []
@@ -98,5 +112,43 @@ def run_detections(
 
         if alert is not None:
             alerts.append(alert)
+
+    # =========================================================
+    # Rate Limit
+    # =========================================================
+    #
+    # Only API-aware events participate in rate limiting.
+    #
+    # Current Member 1 network-only events have:
+    #
+    # method = None
+    # path = None
+    #
+    # Therefore they are stored but are not interpreted
+    # as API requests for this detector.
+    #
+    # The rate-limit key uses:
+    #
+    # user_id -> preferred
+    # src_ip  -> fallback for anonymous traffic
+    # =========================================================
+
+    if method and path:
+
+        rate_limit_key = user_id or src_ip
+
+        if rate_limit_key:
+
+            alert = check_rate_limit(
+                db=db,
+                key=rate_limit_key,
+                src_ip=src_ip,
+                user_id=user_id,
+                method=method,
+                path=path,
+            )
+
+            if alert is not None:
+                alerts.append(alert)
 
     return alerts
