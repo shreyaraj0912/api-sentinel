@@ -19,7 +19,7 @@ def setup_function():
 
 def teardown_function():
     """
-    Restore the default prototype configuration.
+    Restore the default configuration after each test.
     """
 
     reset_rate_limit()
@@ -88,7 +88,6 @@ def test_rate_limit_is_tracked_per_key(db_session):
             path="/api/profile",
         )
 
-    # userB has a separate counter.
     alert = check_rate_limit(
         db=db_session,
         key="userB",
@@ -128,3 +127,72 @@ def test_rate_limit_alert_contains_evidence(db_session):
     assert "request_count" in alert.evidence
     assert "max_requests" in alert.evidence
     assert "window_seconds" in alert.evidence
+
+
+def test_rate_limit_alert_is_not_duplicated(
+    db_session,
+):
+    """
+    Once the rate-limit threshold is exceeded, only the
+    first violation in the current window should create
+    an alert.
+    """
+
+    # Requests 1-3 are within the configured threshold.
+    for _ in range(3):
+        alert = check_rate_limit(
+            db=db_session,
+            key="duplicateTestUser",
+            src_ip="127.0.0.1",
+            user_id="duplicateTestUser",
+            method="GET",
+            path="/api/profile",
+        )
+
+        assert alert is None
+
+    # Request 4 exceeds the threshold.
+    first_alert = check_rate_limit(
+        db=db_session,
+        key="duplicateTestUser",
+        src_ip="127.0.0.1",
+        user_id="duplicateTestUser",
+        method="GET",
+        path="/api/profile",
+    )
+
+    assert first_alert is not None
+    assert first_alert.alert_type == "RATE_LIMIT"
+
+    # Requests 5 and 6 remain above the threshold but
+    # must not generate duplicate alerts.
+    second_alert = check_rate_limit(
+        db=db_session,
+        key="duplicateTestUser",
+        src_ip="127.0.0.1",
+        user_id="duplicateTestUser",
+        method="GET",
+        path="/api/profile",
+    )
+
+    third_alert = check_rate_limit(
+        db=db_session,
+        key="duplicateTestUser",
+        src_ip="127.0.0.1",
+        user_id="duplicateTestUser",
+        method="GET",
+        path="/api/profile",
+    )
+
+    assert second_alert is None
+    assert third_alert is None
+
+    alerts = (
+        db_session.query(Alert)
+        .filter(
+            Alert.alert_type == "RATE_LIMIT",
+        )
+        .all()
+    )
+
+    assert len(alerts) == 1
