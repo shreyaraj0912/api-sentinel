@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from .bfla import detect_bfla
 from .bola import detect_bola
 from .shadow_api import detect_shadow_api
+from ..security.official_apis import get_official_apis
 from ..security.rate_limit_detector import check_rate_limit
 
 
@@ -13,19 +14,6 @@ from ..security.rate_limit_detector import check_rate_limit
 OWNED_OBJECTS = {
     "userA": {"101", "102"},
     "userB": {"201", "202"},
-}
-
-
-# ---------------------------------------------------------
-# Prototype documented API set
-# ---------------------------------------------------------
-
-KNOWN_APIS = {
-    ("GET", "/api/profile"),
-    ("GET", "/api/users"),
-    ("GET", "/api/users/{id}"),
-    ("POST", "/api/login"),
-    ("DELETE", "/api/users/{id}"),
 }
 
 
@@ -47,10 +35,6 @@ def run_detections(
     - BFLA
     - Shadow API
     - Rate limiting
-
-    Network-only events can still be stored normally.
-    API-level detections are only performed when the
-    required API/security context is available.
     """
 
     alerts = []
@@ -102,11 +86,13 @@ def run_detections(
 
     if method and path:
 
+        official_apis = get_official_apis()
+
         alert = detect_shadow_api(
             db=db,
             method=method,
             path=path,
-            known_apis=KNOWN_APIS,
+            known_apis=official_apis,
             src_ip=src_ip,
         )
 
@@ -115,22 +101,6 @@ def run_detections(
 
     # =========================================================
     # Rate Limit
-    # =========================================================
-    #
-    # Only API-aware events participate in rate limiting.
-    #
-    # Current Member 1 network-only events have:
-    #
-    # method = None
-    # path = None
-    #
-    # Therefore they are stored but are not interpreted
-    # as API requests for this detector.
-    #
-    # The rate-limit key uses:
-    #
-    # user_id -> preferred
-    # src_ip  -> fallback for anonymous traffic
     # =========================================================
 
     if method and path:
