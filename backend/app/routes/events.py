@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from ..security.official_apis import is_official_api
 
 from ..database import get_db
 from ..detection.engine import run_detections
@@ -112,7 +113,14 @@ def create_event(
             first_seen=now,
             last_seen=now,
             request_count=1,
-            documented=False,
+            documented=(
+                is_official_api(
+                    event.method,
+                    normalized_path,
+                )
+                if event.method and normalized_path
+                else False
+            ),
         )
 
         db.add(inventory_item)
@@ -122,10 +130,15 @@ def create_event(
     # ---------------------------------------------------------
 
     else:
-
         inventory_item.last_seen = now
         inventory_item.request_count += 1
 
+        if event.method and normalized_path:
+            inventory_item.documented = is_official_api(
+                event.method,
+                normalized_path,
+            )
+            
     db.commit()
 
     # =========================================================
