@@ -1,3 +1,6 @@
+import backend.app.security.rate_limit_detector as detector_module
+import backend.app.security.rate_limiter as rate_limiter_module
+
 from backend.app.models import Alert
 from backend.app.security.rate_limit_detector import (
     check_rate_limit,
@@ -196,3 +199,93 @@ def test_rate_limit_alert_is_not_duplicated(
     )
 
     assert len(alerts) == 1
+
+def test_new_rate_limit_alert_is_allowed_after_window_expires(
+    db_session,
+    monkeypatch,
+):
+    """
+    A key should be able to generate a new RATE_LIMIT alert
+    after the configured rate-limit window expires.
+    """
+
+    current_time = [1000.0]
+
+    monkeypatch.setattr(
+        rate_limiter_module,
+        "monotonic",
+        lambda: current_time[0],
+    )
+
+    monkeypatch.setattr(
+        detector_module,
+        "monotonic",
+        lambda: current_time[0],
+    )
+
+    reset_rate_limit()
+
+    rate_limit_tracker.config.max_requests = 3
+    rate_limit_tracker.config.window_seconds = 60.0
+
+    key = "windowResetUser"
+
+    # First window:
+    # Requests 1-3 are allowed.
+    for _ in range(3):
+        alert = check_rate_limit(
+            db=db_session,
+            key=key,
+            src_ip="127.0.0.1",
+            user_id=key,
+            method="GET",
+            path="/api/profile",
+        )
+
+        assert alert is None
+
+    # Request 4 exceeds the threshold.
+    first_alert = check_rate_limit(
+        db=db_session,
+        key=key,
+        src_ip="127.0.0.1",
+        user_id=key,
+        method="GET",
+        path="/api/profile",
+    )
+
+    assert first_alert is not None
+    assert first_alert.alert_type == "RATE_LIMIT"
+
+    # Move beyond the configured 60-second window.
+    current_time[0] += 61.0
+
+    # New window:
+    # Requests 1-3 are allowed again.
+    for _ in range(3):
+        alert = check_rate_limit(
+            db=db_session,
+            key=key,
+            src_ip="127.0.0.1",
+            user_id=key,
+            method="GET",
+            path="/api/profile",
+        )
+
+        assert alert is None
+
+    # Request 4 in the new window should generate
+    # a new RATE_LIMIT alert.
+    second_alert = check_rate_limit(
+        db=db_session,
+        key=key,
+        src_ip="127.0.0.1",
+        user_id=key,
+        method="GET",
+        path="/api/profile",
+    )
+
+    assert second_alert is not None
+    assert second_alert.alert_type == "RATE_LIMIT"
+
+    assert first_alert.id != second_alert.id
