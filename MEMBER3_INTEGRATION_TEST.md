@@ -23,3 +23,7 @@ Result:
 - Backend and frontend integration verified successfully.
 
 Actual eBPF collector runtime testing remains pending because Rust/eBPF toolchain setup on Windows is not yet complete.
+
+## Current Status
+
+Forwarder-to-backend integration has been successfully verified. Actual eBPF collector runtime testing remains pending.
