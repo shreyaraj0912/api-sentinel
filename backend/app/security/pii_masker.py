@@ -4,13 +4,16 @@ from typing import Any
 
 
 EMAIL_PATTERN = re.compile(
-    r"^([^@\s])([^@\s]*)(@.+)$"
+    r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+"
+    r"@"
+    r"[A-Za-z0-9-]+"
+    r"(?:\.[A-Za-z0-9-]+)+"
 )
 
 
 def mask_email(email: str) -> str:
     """
-    Mask an email address while retaining the domain.
+    Mask a complete email address while retaining the domain.
 
     Example:
         user@example.com
@@ -20,40 +23,38 @@ def mask_email(email: str) -> str:
     if not email or "@" not in email:
         return email
 
-    match = EMAIL_PATTERN.match(email)
+    local_part, domain = email.split("@", 1)
 
-    if not match:
+    if not local_part or not domain:
         return email
 
-    first_char = match.group(1)
-    domain = match.group(3)
-
-    return f"{first_char}***{domain}"
+    return f"{local_part[0]}***@{domain}"
 
 
 def mask_pii(value: str | None) -> str | None:
     """
-    Mask supported PII values.
+    Mask supported PII found anywhere inside a string.
 
     Currently supports email addresses.
+
+    Example:
+        User user@example.com attempted an operation.
+        ->
+        User u***@example.com attempted an operation.
     """
 
     if value is None:
         return None
 
-    if "@" in value:
-        return mask_email(value)
-
-    return value
+    return EMAIL_PATTERN.sub(
+        lambda match: mask_email(match.group(0)),
+        value,
+    )
 
 
 def mask_json_value(value: Any) -> Any:
     """
-    Recursively mask supported PII values inside JSON-compatible data.
-
-    Strings are checked for supported PII.
-    Dictionaries and lists are processed recursively.
-    Other primitive values are returned unchanged.
+    Recursively mask supported PII inside JSON-compatible data.
     """
 
     if isinstance(value, str):
@@ -78,16 +79,7 @@ def mask_json_string(value: str | None) -> str | None:
     """
     Mask supported PII inside a JSON string.
 
-    Example:
-
-        {"user_id": "user@example.com"}
-
-    becomes:
-
-        {"user_id": "u***@example.com"}
-
-    If the value is not valid JSON, the original text is
-    passed through the normal PII masker.
+    Invalid JSON falls back to normal string masking.
     """
 
     if value is None:
