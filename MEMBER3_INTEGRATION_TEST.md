@@ -27,3 +27,15 @@ Actual eBPF collector runtime testing remains pending because Rust/eBPF toolchai
 ## Current Status
 
 Forwarder-to-backend integration has been successfully verified. Actual eBPF collector runtime testing remains pending.
+## Latest End-to-End Verification
+
+- Backend `/events` endpoint successfully accepted a test event.
+- Test event ID: 5
+- Source: 10.0.2.15
+- Destination: 10.0.2.20
+- Protocol: TCP
+- Source Port: 54321
+- Destination Port: 8000
+- Packet Length: 512
+- Event successfully appeared in the React dashboard under Recent Events.
+- Dashboard metrics verified: Total APIs: 2, Shadow APIs: 2, BOLA: 1, BFLA: 1.
