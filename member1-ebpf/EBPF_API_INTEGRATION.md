@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Connect the Member 1 eBPF/XDP telemetry collector to the Member 3 FastAPI `/events` endpoint.
+Connect the Member 1 eBPF/XDP telemetry collector to the Member 3 FastAPI `/events` endpoint over Tailscale.
 
 ## Architecture
 
@@ -10,72 +10,147 @@ XDP/eBPF
 → RingBuf
 → Rust telemetry collector
 → JSON
-→ Telemetry forwarder
+→ Python telemetry forwarder
+→ Tailscale
 → POST `/events`
 → FastAPI
+→ Event Storage
 → Detection
-→ Dashboard
+→ Alerts
+→ React Dashboard
+
+## Network Configuration
+
+Member 1 — Kali:
+- Tailscale IP: `100.89.211.126`
+
+Member 2/3 — Windows:
+- Tailscale IP: `100.103.17.105`
+- FastAPI port: `8001`
+
+FastAPI events endpoint:
+
+`http://100.103.17.105:8001/events`
 
 ## Member 1 Telemetry
 
 The eBPF collector produces:
 
-- event_id
-- timestamp
-- src_ip
-- dst_ip
-- src_port
-- dst_port
-- protocol
-- packet_len
+- `event_id`
+- `timestamp`
+- `src_ip`
+- `dst_ip`
+- `src_port`
+- `dst_port`
+- `protocol`
+- `packet_len`
 
-API-level fields such as:
+The collector also exposes the following API-level fields as `null` placeholders:
 
-- method
-- path
-- user_id
-- role
-- object_id
+- `method`
+- `path`
+- `user_id`
+- `role`
+- `object_id`
 
-are currently unavailable at the XDP layer.
+These fields are not available directly at the XDP network layer.
 
 ## EventCreate Mapping
 
-The telemetry forwarder maps the Member 1 JSON to the Member 3 `EventCreate` schema:
+The telemetry forwarder sends the following fields to the FastAPI `/events` endpoint:
 
-- timestamp → timestamp
-- src_ip → src_ip
-- dst_ip → dst_ip
-- src_port → src_port
-- dst_port → dst_port
-- protocol → protocol
-- packet_len → packet_len
+- `event_id` → `event_id`
+- eBPF timestamp → Unix timestamp integer
+- `src_ip` → `src_ip`
+- `dst_ip` → `dst_ip`
+- `src_port` → `src_port`
+- `dst_port` → `dst_port`
+- `protocol` → `protocol`
+- `packet_len` → `packet_len`
 
-`event_id` is retained in Member 1 telemetry but is not sent to `/events` because it is not part of the confirmed `EventCreate` schema.
+The timestamp is converted from the eBPF monotonic clock representation into Unix epoch seconds and normalized to an integer because the FastAPI event schema requires an integer timestamp.
 
 ## API-Level Enrichment
 
 The backend is responsible for future enrichment and normalization of:
 
-- method
-- path
-- normalized_path
-- user_id
-- role
-- object_id
-- status_code
-- service
+- `method`
+- `path`
+- `normalized_path`
+- `user_id`
+- `role`
+- `object_id`
+- `status_code`
+- `service`
 
 XDP remains focused on network-level telemetry.
 
 ## Validation
 
-The forwarder was syntax-checked using:
+### Unit Tests
 
-`python -m py_compile`
+The telemetry forwarder test suite passes:
 
-Live Member 3 API validation is pending because the FastAPI server is not currently reachable from the Member 1 machine.
+`5 passed`
 
-## Result
+### FastAPI Connectivity
 
-The integration layer is ready to forward eBPF JSON telemetry to the confirmed `/events` schema once the Member 3 FastAPI endpoint is reachable.
+The Member 1 Kali machine successfully reaches the Member 2/3 FastAPI service through Tailscale.
+
+Validated endpoints:
+
+- `/`
+- `/docs`
+- `/events`
+
+### Manual Event Validation
+
+A manually generated event was accepted by FastAPI with:
+
+`HTTP 201 Created`
+
+### Live eBPF Validation
+
+The Rust eBPF/XDP collector successfully attaches to:
+
+`wlan0`
+
+The collector generates JSON telemetry events.
+
+The Python forwarder successfully sends live eBPF events to:
+
+`http://100.103.17.105:8001/events`
+
+Live events returned:
+
+`HTTP 201`
+
+for consecutive events including:
+
+`evt-000001` through `evt-000065`
+
+### Backend Persistence Validation
+
+The event:
+
+`evt-000065`
+
+was retrieved from the FastAPI `/events` endpoint after the live test.
+
+The backend stored it with database ID:
+
+`541`
+
+Example validated event:
+
+```json
+{
+  "event_id": "evt-000065",
+  "timestamp": 1789652879,
+  "src_ip": "49.37.157.27",
+  "dst_ip": "10.204.102.146",
+  "src_port": 41641,
+  "dst_port": 41641,
+  "protocol": "UDP",
+  "packet_len": 138
+}

@@ -43,11 +43,12 @@ def build_event_payload(event: dict) -> dict:
 
     raw_timestamp_ns = int(event["timestamp"])
 
-    unix_timestamp = bpf_timestamp_to_unix_seconds(
+    unix_timestamp = int(bpf_timestamp_to_unix_seconds(
         raw_timestamp_ns
-    )
+    ))
 
     return {
+        "event_id": event.get("event_id"),
         "timestamp": unix_timestamp,
         "src_ip": event.get("src_ip"),
         "dst_ip": event.get("dst_ip"),
