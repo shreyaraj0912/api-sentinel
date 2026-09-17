@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 function App() {
   const [events, setEvents] = useState([]);
@@ -37,7 +37,7 @@ function App() {
       setEvents(eventsData);
       setInventory(inventoryData);
       setAlerts(alertsData);
-    } catch (err) {
+    } catch {
       setError(
         "Unable to connect to backend. Make sure FastAPI is running on port 8000."
       );
@@ -47,7 +47,11 @@ function App() {
   }
 
   useEffect(() => {
-    fetchData();
+    const loadInitialData = async () => {
+      await fetchData();
+    };
+
+    loadInitialData();
 
     const interval = setInterval(fetchData, 5000);
 
